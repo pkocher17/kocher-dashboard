@@ -148,7 +148,7 @@
     .totals-row td { font-weight: 700; color: var(--gold); border-top: 2px solid var(--border); background: var(--surface2); }
 
     /* ── MAP VIEW ──────────────────────── */
-    #mapView { display: none; flex: 1; position: relative; }
+    #mapView { display: none; flex: 1; position: relative; width: 100%; }
     #map { width: 100%; height: calc(100vh - 230px); min-height: 400px; }
     .map-loading {
       position: absolute; inset: 0; display: flex; align-items: center;
@@ -689,10 +689,17 @@ function showTab(tab) {
   document.getElementById('mapView').style.display = tab === 'map' ? 'block' : 'none';
   document.getElementById('tabTable').classList.toggle('active', tab === 'table');
   document.getElementById('tabMap').classList.toggle('active', tab === 'map');
-  if (tab === 'map' && !state.mapInitialized) {
-    loadGoogleMaps();
-  } else if (tab === 'map' && state.mapInitialized && state.mapMarkers.length === 0) {
-    startGeocoding();
+  if (tab === 'map') {
+    if (!state.mapInitialized) {
+      loadGoogleMaps();
+    } else if (state.map) {
+      // Trigger resize after the div is visible so tiles render correctly
+      setTimeout(function() {
+        google.maps.event.trigger(state.map, 'resize');
+        state.map.setCenter({ lat: 32.7767, lng: -96.7970 });
+        if (state.mapMarkers.length === 0) startGeocoding();
+      }, 120);
+    }
   }
 }
 
@@ -715,6 +722,10 @@ function loadGoogleMaps() {
 
 window.initMap = function() {
   state.mapInitialized = true;
+  // Use requestAnimationFrame + setTimeout to ensure the browser has fully
+  // laid out the #mapView container before Google Maps measures it for tiles
+  requestAnimationFrame(function() {
+    setTimeout(function() {
   const mapEl = document.getElementById('map');
   const gmap = new google.maps.Map(mapEl, {
     center: { lat: 32.7767, lng: -96.7970 }, // DFW default
@@ -735,6 +746,8 @@ window.initMap = function() {
   state.mapInfoWindow = new google.maps.InfoWindow();
   document.getElementById('mapLoading').style.display = 'none';
   startGeocoding();
+    }, 80); // allow browser to paint the visible map container
+  }); // requestAnimationFrame
 };
 
 function startGeocoding() {
