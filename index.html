@@ -425,7 +425,9 @@ let state = {
   sortKey: 'price',
   sortDir: -1,
   geocodeCache: {},
-  mapInitialized: false,
+  mapsApiReady: false,   // Maps JS API script loaded
+  mapInitialized: false, // Map UI (tiles) created
+  pendingMapTab: false,  // user opened map tab before API finished loading
   mapMarkers: [],
   mapInfoWindow: null,
   geocoding: false
@@ -468,6 +470,10 @@ function init() {
   if (state.data && state.data.length > 0) {
     processData(state.data);
   }
+  // Silently load Maps API in background so geocoding fills city/zip dropdowns
+  // before the user ever opens the Map tab
+  const needsGeo = state.data && state.data.some(r => !r.lat && r.address);
+  if (needsGeo) loadGoogleMaps();
 }
 
 // ── DATA PROCESSING ───────────────────────
@@ -690,14 +696,17 @@ function showTab(tab) {
   document.getElementById('tabTable').classList.toggle('active', tab === 'table');
   document.getElementById('tabMap').classList.toggle('active', tab === 'map');
   if (tab === 'map') {
-    if (!state.mapInitialized) {
-      loadGoogleMaps();
+    if (!state.mapsApiReady) {
+      // API still loading (started in background); flag so initMap creates UI
+      state.pendingMapTab = true;
+      loadGoogleMaps(); // no-op if already loading; starts it if key was missing at init
+    } else if (!state.mapInitialized) {
+      createMapUI();
     } else if (state.map) {
-      // Trigger resize after the div is visible so tiles render correctly
+      // Already created — trigger resize after div becomes visible
       setTimeout(function() {
         google.maps.event.trigger(state.map, 'resize');
         state.map.setCenter({ lat: 32.7767, lng: -96.7970 });
-        if (state.mapMarkers.length === 0) startGeocoding();
       }, 120);
     }
   }
@@ -705,13 +714,18 @@ function showTab(tab) {
 
 // ── GOOGLE MAPS ───────────────────────────
 function loadGoogleMaps() {
+  // Guard: don't load twice
+  if (state.mapsApiReady || document.querySelector('script[src*="maps.googleapis.com"]')) return;
   const key = CONFIG.mapsApiKey;
   if (!key || key === '%%MAPS_API_KEY%%') {
-    document.getElementById('mapLoading').innerHTML =
-      `<p style="color:var(--text2);text-align:center;padding:40px;">
-        Google Maps API key not configured.<br>
-        <span style="font-size:12px;">Add your API key via Upload Data or contact the dashboard admin.</span>
-       </p>`;
+    // Only show error if the map tab is actually visible
+    if (document.getElementById('mapView').style.display !== 'none') {
+      document.getElementById('mapLoading').innerHTML =
+        `<p style="color:var(--text2);text-align:center;padding:40px;">
+          Google Maps API key not configured.<br>
+          <span style="font-size:12px;">Contact the dashboard admin.</span>
+         </p>`;
+    }
     return;
   }
   const script = document.createElement('script');
@@ -720,35 +734,50 @@ function loadGoogleMaps() {
   document.head.appendChild(script);
 }
 
+// Called by Maps API when loaded. Starts background geocoding immediately
+// (so City/Zip dropdowns fill in), then creates the map UI only if the
+// Map tab is already open (or becomes open via pendingMapTab).
 window.initMap = function() {
-  state.mapInitialized = true;
-  // Use requestAnimationFrame + setTimeout to ensure the browser has fully
-  // laid out the #mapView container before Google Maps measures it for tiles
+  state.mapsApiReady = true;
+  startGeocoding(); // begin building geocache in background right away
+  if (state.pendingMapTab) {
+    state.pendingMapTab = false;
+    createMapUI();
+  }
+};
+
+// Creates the visible Google Map (tiles + markers). Only called when the
+// Map tab is visible so the container has proper dimensions.
+function createMapUI() {
+  document.getElementById('mapLoading').style.display = 'flex';
+  // requestAnimationFrame + 80ms ensures browser has painted the visible div
   requestAnimationFrame(function() {
     setTimeout(function() {
-  const mapEl = document.getElementById('map');
-  const gmap = new google.maps.Map(mapEl, {
-    center: { lat: 32.7767, lng: -96.7970 }, // DFW default
-    zoom: 10,
-    styles: [
-      { elementType: 'geometry', stylers: [{ color: '#1a1d27' }] },
-      { elementType: 'labels.text.stroke', stylers: [{ color: '#0f1117' }] },
-      { elementType: 'labels.text.fill', stylers: [{ color: '#9399b2' }] },
-      { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2e3250' }] },
-      { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1d27' }] },
-      { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f1117' }] },
-      { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-      { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-      { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] }
-    ]
+      const mapEl = document.getElementById('map');
+      const gmap = new google.maps.Map(mapEl, {
+        center: { lat: 32.7767, lng: -96.7970 }, // DFW default
+        zoom: 10,
+        styles: [
+          { elementType: 'geometry', stylers: [{ color: '#1a1d27' }] },
+          { elementType: 'labels.text.stroke', stylers: [{ color: '#0f1117' }] },
+          { elementType: 'labels.text.fill', stylers: [{ color: '#9399b2' }] },
+          { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2e3250' }] },
+          { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#1a1d27' }] },
+          { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0f1117' }] },
+          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+          { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] }
+        ]
+      });
+      state.map = gmap;
+      state.mapInitialized = true;
+      state.mapInfoWindow = new google.maps.InfoWindow();
+      document.getElementById('mapLoading').style.display = 'none';
+      // If geocoding already finished before map UI was created, plot now
+      if (!state.geocoding) plotMarkers();
+    }, 80);
   });
-  state.map = gmap;
-  state.mapInfoWindow = new google.maps.InfoWindow();
-  document.getElementById('mapLoading').style.display = 'none';
-  startGeocoding();
-    }, 80); // allow browser to paint the visible map container
-  }); // requestAnimationFrame
-};
+}
 
 function startGeocoding() {
   if (state.geocoding || !state.data.length || !window.google) return;
@@ -790,6 +819,8 @@ function startGeocoding() {
         row.city = city; row.zip = zip;
       }
       idx++;
+      // Every 50 addresses, refresh city/zip dropdowns so they populate progressively
+      if (idx % 50 === 0) rebuildCityZipDropdowns();
       setTimeout(geocodeNext, 150); // 150ms delay = ~6 req/s, well within free tier limits
     });
   }
@@ -797,6 +828,7 @@ function startGeocoding() {
 }
 
 function plotMarkers() {
+  if (!state.map) return; // map UI not created yet — will be called again when ready
   // Clear existing markers
   state.mapMarkers.forEach(m => m.setMap(null));
   state.mapMarkers = [];
