@@ -7,19 +7,19 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
   <style>
     :root {
-      --bg: #0f1117;
-      --surface: #1a1d27;
-      --surface2: #232636;
-      --border: #2e3250;
-      --accent: #4f6ef7;
-      --accent2: #7c3aed;
-      --gold: #f5a623;
-      --text: #e8eaf0;
-      --text2: #9399b2;
+      --bg: #0f0f0f;
+      --surface: #1a1a1a;
+      --surface2: #242424;
+      --border: #333333;
+      --accent: #CC0000;   /* Keller Williams Red */
+      --accent2: #990000;  /* KW Red dark */
+      --gold: #ffffff;     /* KW White for price highlights */
+      --text: #f0f0f0;
+      --text2: #999999;
       --green: #22c55e;
       --red: #ef4444;
       --radius: 10px;
-      --shadow: 0 4px 24px rgba(0,0,0,0.4);
+      --shadow: 0 4px 24px rgba(0,0,0,0.5);
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { height: 100%; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); font-size: 14px; }
@@ -292,7 +292,7 @@
 
   <!-- TABS -->
   <div class="tabs">
-    <button class="tab-btn active" id="tabTable" onclick="showTab('table')">📋 Table View</button>
+    <button class="tab-btn active" id="tabTable" onclick="showTab('table')">📋 Dashboard</button>
     <button class="tab-btn" id="tabMap" onclick="showTab('map')">🗺 Map View</button>
   </div>
 
@@ -305,6 +305,9 @@
       </select>
       <select class="filter-select" id="zipFilter" onchange="applyFilters()">
         <option value="">All Zips</option>
+      </select>
+      <select class="filter-select" id="yearFilter" onchange="applyFilters()">
+        <option value="">All Years</option>
       </select>
       <select class="filter-select" id="bedsFilter" onchange="applyFilters()">
         <option value="">All Beds</option>
@@ -336,6 +339,7 @@
             <th onclick="sortBy('city')" id="th-city">City <i class="sort-icon"></i></th>
             <th onclick="sortBy('zip')" id="th-zip">Zip <i class="sort-icon"></i></th>
             <th onclick="sortBy('subdivision')" id="th-subdivision">Subdivision <i class="sort-icon"></i></th>
+            <th onclick="sortBy('year')" id="th-year">Year <i class="sort-icon"></i></th>
             <th onclick="sortBy('price')" id="th-price">Price <i class="sort-icon"></i></th>
             <th onclick="sortBy('beds')" id="th-beds">Beds <i class="sort-icon"></i></th>
             <th onclick="sortBy('baths')" id="th-baths">Baths <i class="sort-icon"></i></th>
@@ -346,7 +350,7 @@
           </tr>
         </thead>
         <tbody id="tableBody">
-          <tr><td colspan="12" style="text-align:center;padding:48px;color:var(--text2);">
+          <tr><td colspan="13" style="text-align:center;padding:48px;color:var(--text2);">
             No data loaded — click <strong style="color:var(--text)">Upload Data</strong> to get started
           </td></tr>
         </tbody>
@@ -498,7 +502,8 @@ function processData(rows) {
       city: geo.city || r.city || '',
       zip: geo.zip || r.zip || '',
       lat: geo.lat || r.lat || null,
-      lng: geo.lng || r.lng || null
+      lng: geo.lng || r.lng || null,
+      year: r.year ? parseInt(r.year) : 0
     };
   });
 
@@ -547,16 +552,15 @@ function populateFilterDropdowns() {
 function rebuildCityZipDropdowns() {
   const cities = [...new Set(state.data.map(r => r.city).filter(Boolean))].sort();
   const zips = [...new Set(state.data.map(r => r.zip).filter(Boolean))].sort();
+  const years = [...new Set(state.data.map(r => r.year).filter(Boolean))].sort((a,b) => b - a);
   const cityEl = document.getElementById('cityFilter');
   const zipEl = document.getElementById('zipFilter');
-  const curCity = cityEl.value; const curZip = zipEl.value;
+  const yearEl = document.getElementById('yearFilter');
+  const curCity = cityEl.value; const curZip = zipEl.value; const curYear = yearEl.value;
   cityEl.innerHTML = '<option value="">All Cities</option>' + cities.map(c => `<option value="${c}">${c}</option>`).join('');
   zipEl.innerHTML = '<option value="">All Zips</option>' + zips.map(z => `<option value="${z}">${z}</option>`).join('');
-  cityEl.value = curCity; zipEl.value = curZip;
-  if (!cities.length) {
-    cityEl.innerHTML = '<option value="">Cities loading…</option>';
-    zipEl.innerHTML = '<option value="">Zips loading…</option>';
-  }
+  yearEl.innerHTML = '<option value="">All Years</option>' + years.map(y => `<option value="${y}">${y}</option>`).join('');
+  cityEl.value = curCity; zipEl.value = curZip; yearEl.value = curYear;
 }
 
 // ── FILTERS & SORT ────────────────────────
@@ -564,6 +568,7 @@ function applyFilters() {
   const q = document.getElementById('searchInput').value.toLowerCase();
   const city = document.getElementById('cityFilter').value;
   const zip = document.getElementById('zipFilter').value;
+  const year = document.getElementById('yearFilter').value;
   const beds = parseInt(document.getElementById('bedsFilter').value) || 0;
   const pool = document.getElementById('poolFilter').value;
   const minP = parseFloat(document.getElementById('minPrice').value) || 0;
@@ -573,6 +578,7 @@ function applyFilters() {
     if (q && !(`${r.address} ${r.subdivision} ${r.mls} ${r.city} ${r.zip}`).toLowerCase().includes(q)) return false;
     if (city && r.city !== city) return false;
     if (zip && r.zip !== zip) return false;
+    if (year && String(r.year) !== year) return false;
     if (beds && r.bedsNum < beds) return false;
     if (pool && r.pool !== pool) return false;
     if (r.price < minP || r.price > maxP) return false;
@@ -585,7 +591,7 @@ function applyFilters() {
 
 function sortBy(key) {
   if (state.sortKey === key) state.sortDir *= -1;
-  else { state.sortKey = key; state.sortDir = key === 'price' ? -1 : 1; }
+  else { state.sortKey = key; state.sortDir = (key === 'price' || key === 'year') ? -1 : 1; }
   sortFiltered();
   renderTable();
 }
@@ -595,7 +601,7 @@ function sortFiltered() {
   const d = state.sortDir;
   state.filtered.sort((a, b) => {
     let va = a[k] ?? '', vb = b[k] ?? '';
-    if (k === 'price' || k === 'sqftNum' || k === 'bedsNum' || k === 'bathsNum' || k === 'acres') {
+    if (k === 'price' || k === 'sqftNum' || k === 'bedsNum' || k === 'bathsNum' || k === 'acres' || k === 'year') {
       va = parseFloat(va) || 0; vb = parseFloat(vb) || 0;
       return (va - vb) * d;
     }
@@ -607,6 +613,7 @@ function resetFilters() {
   document.getElementById('searchInput').value = '';
   document.getElementById('cityFilter').value = '';
   document.getElementById('zipFilter').value = '';
+  document.getElementById('yearFilter').value = '';
   document.getElementById('bedsFilter').value = '';
   document.getElementById('poolFilter').value = '';
   document.getElementById('minPrice').value = '';
@@ -618,7 +625,7 @@ function resetFilters() {
 function renderTable() {
   const tbody = document.getElementById('tableBody');
   if (!state.filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="12" style="text-align:center;padding:48px;color:var(--text2);">No results match your filters</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="13" style="text-align:center;padding:48px;color:var(--text2);">No results match your filters</td></tr>`;
     document.getElementById('rowCount').textContent = '0 results';
     document.getElementById('footerVolume').textContent = '';
     return;
@@ -652,12 +659,14 @@ function renderTable() {
       : `<span class="badge badge-no-pool">No</span>`;
     const sqftFmt = r.sqftNum ? r.sqftNum.toLocaleString() : r.sqft || '–';
 
+    const yearCell = r.year ? `<span style="font-size:12px">${r.year}</span>` : `<span class="geocoding-tag">–</span>`;
     return `<tr>
       <td class="addr"><span class="street">${escHtml(r.streetName)}</span></td>
       <td>${escHtml(r.streetNum)}</td>
       <td>${cityZip}</td>
       <td>${zipCell}</td>
       <td style="font-size:12px;color:var(--text2)">${escHtml(r.subdivision || '–')}</td>
+      <td style="text-align:center">${yearCell}</td>
       <td style="font-weight:600;color:var(--gold)">${fmtPrice(r.price)}</td>
       <td style="text-align:center">${r.beds || '–'}</td>
       <td style="text-align:center">${r.baths || '–'}</td>
@@ -669,7 +678,7 @@ function renderTable() {
   }).join('');
 
   const totalRow = `<tr class="totals-row">
-    <td colspan="5" style="text-align:right;font-size:12px;color:var(--text2)">
+    <td colspan="6" style="text-align:right;font-size:12px;color:var(--text2)">
       ${totalFiltered.toLocaleString()} properties
     </td>
     <td style="color:var(--gold);font-weight:700">${fmtVolume(totalVol)}</td>
@@ -819,8 +828,11 @@ function startGeocoding() {
         row.city = city; row.zip = zip;
       }
       idx++;
-      // Every 50 addresses, refresh city/zip dropdowns so they populate progressively
-      if (idx % 50 === 0) rebuildCityZipDropdowns();
+      // Every 50 addresses, refresh dropdowns and re-render table so city/zip fill in
+      if (idx % 50 === 0) {
+        rebuildCityZipDropdowns();
+        if (document.getElementById('tableView').style.display !== 'none') applyFilters();
+      }
       setTimeout(geocodeNext, 150); // 150ms delay = ~6 req/s, well within free tier limits
     });
   }
@@ -940,6 +952,19 @@ function handleFileSelect(file) {
         const addr = String(row[iAddr] || '').replace(/\s+/g, ' ').trim();
         if (!addr) continue;
         const priceRaw = String(row[iPrice] || '0').replace(/[$,]/g, '');
+        // Extract year from close date (Excel serial or string)
+        let year = 0;
+        if (iClose >= 0 && row[iClose]) {
+          const raw = row[iClose];
+          if (typeof raw === 'number') {
+            // Excel date serial: days since 1899-12-30
+            const d = new Date(Math.round((raw - 25569) * 86400 * 1000));
+            year = d.getUTCFullYear();
+          } else {
+            const m = String(raw).match(/(20\d{2}|19\d{2})/);
+            if (m) year = parseInt(m[1]);
+          }
+        }
         parsed.push({
           mls: String(row[iMls] || ''),
           address: addr,
@@ -951,6 +976,7 @@ function handleFileSelect(file) {
           acres: String(row[iAcres >= 0 ? iAcres : 11] || ''),
           pool: String(row[iPool >= 0 ? iPool : 12] || ''),
           price: parseFloat(priceRaw) || 0,
+          year: year,
           city: '', zip: '', lat: null, lng: null
         });
       }
