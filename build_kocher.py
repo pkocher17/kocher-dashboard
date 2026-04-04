@@ -78,6 +78,7 @@ def parse_spreadsheet(path):
     iAcres = col('Acres')
     iPool  = col('Pool')
     iPrice = col('Current Price')
+    iClose = col('Close Date') if col('Close Date') >= 0 else col('Closing Date') if col('Closing Date') >= 0 else col('Sold Date')
 
     parsed = []
     for row in rows_raw[header_row_idx + 1:]:
@@ -90,6 +91,17 @@ def parse_spreadsheet(path):
         except ValueError:
             price = 0.0
 
+        # Extract year from close date
+        year = 0
+        if iClose >= 0 and row[iClose]:
+            cd = row[iClose]
+            if hasattr(cd, 'year'):   # datetime object from openpyxl
+                year = cd.year
+            else:
+                import re as _re
+                m = _re.search(r'\b(20\d{2}|19\d{2})\b', str(cd))
+                if m: year = int(m.group(1))
+
         parsed.append({
             'mls':        str(row[iMls]   or '') if iMls   >= 0 else '',
             'address':    addr,
@@ -101,6 +113,7 @@ def parse_spreadsheet(path):
             'acres':      str(row[iAcres] or '') if iAcres >= 0 else '',
             'pool':       str(row[iPool]  or '') if iPool  >= 0 else '',
             'price':      price,
+            'year':       year,
             'city': '', 'zip': '', 'lat': None, 'lng': None
         })
 
