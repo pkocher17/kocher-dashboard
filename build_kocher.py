@@ -79,6 +79,8 @@ def parse_spreadsheet(path):
     iPool  = col('Pool')
     iPrice = col('Current Price')
     iClose = col('Close Date') if col('Close Date') >= 0 else col('Closing Date') if col('Closing Date') >= 0 else col('Sold Date')
+    iCity  = col('City') if col('City') >= 0 else col('Prop City') if col('Prop City') >= 0 else col('Property City')
+    iZip   = col('Zip') if col('Zip') >= 0 else col('ZIP') if col('ZIP') >= 0 else col('Postal')
 
     parsed = []
     for row in rows_raw[header_row_idx + 1:]:
@@ -114,7 +116,9 @@ def parse_spreadsheet(path):
             'pool':       str(row[iPool]  or '') if iPool  >= 0 else '',
             'price':      price,
             'year':       year,
-            'city': '', 'zip': '', 'lat': None, 'lng': None
+            'city':       str(row[iCity] or '').strip() if iCity >= 0 and row[iCity] else '',
+            'zip':        str(row[iZip]  or '').strip() if iZip  >= 0 and row[iZip]  else '',
+            'lat': None, 'lng': None
         })
 
     return parsed
