@@ -499,8 +499,8 @@ function processData(rows) {
       sqftNum: parseFloat((r.sqft || '0').toString().replace(/[^0-9]/g, '')) || 0,
       bedsNum: parseInt(r.beds) || 0,
       bathsNum: parseFloat(r.baths) || 0,
-      city: geo.city || r.city || '',
-      zip: geo.zip || r.zip || '',
+      city: r.city || geo.city || '',   // prefer spreadsheet city, fall back to geocoded
+      zip:  r.zip  || geo.zip  || '',   // prefer spreadsheet zip,  fall back to geocoded
       lat: geo.lat || r.lat || null,
       lng: geo.lng || r.lng || null,
       year: r.year ? parseInt(r.year) : 0
@@ -948,6 +948,8 @@ function handleFileSelect(file) {
       const iPool = colIdx('Pool');
       const iPrice = colIdx('Current Price');
       const iClose = colIdx('Close Date') >= 0 ? colIdx('Close Date') : colIdx('Closing Date') >= 0 ? colIdx('Closing Date') : colIdx('Sold Date');
+      const iCity  = colIdx('City') >= 0 ? colIdx('City') : colIdx('Prop City') >= 0 ? colIdx('Prop City') : colIdx('Property City');
+      const iZip   = colIdx('Zip') >= 0 ? colIdx('Zip') : colIdx('ZIP') >= 0 ? colIdx('ZIP') : colIdx('Postal');
 
       const parsed = [];
       for (let i = headerRow + 1; i < raw.length; i++) {
@@ -980,7 +982,9 @@ function handleFileSelect(file) {
           pool: String(row[iPool >= 0 ? iPool : 12] || ''),
           price: parseFloat(priceRaw) || 0,
           year: year,
-          city: '', zip: '', lat: null, lng: null
+          city: iCity >= 0 ? String(row[iCity] || '').trim() : '',
+          zip:  iZip  >= 0 ? String(row[iZip]  || '').trim() : '',
+          lat: null, lng: null
         });
       }
 
