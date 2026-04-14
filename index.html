@@ -236,6 +236,61 @@
       .stats-row { grid-template-columns: 1fr 1fr; }
       .stat-val { font-size: 15px; }
     }
+  
+  /* ── Address Search Bar ── */
+  #map-search-bar {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface, #1a1d27);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    position: relative;
+    z-index: 10;
+  }
+  #map-search-bar.visible { display: flex; }
+  #map-search-input {
+    flex: 1;
+    max-width: 400px;
+    padding: 7px 12px;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #map-search-input::placeholder { color: rgba(255,255,255,0.35); }
+  #map-search-input:focus { border-color: #4a8ef8; }
+  #map-search-btn {
+    padding: 7px 14px;
+    background: #4a8ef8;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s;
+  }
+  #map-search-btn:hover { background: #2d6fd6; }
+  #map-search-btn:disabled { background: #3a5a8a; cursor: default; }
+  #map-search-clear {
+    display: none;
+    padding: 7px 11px;
+    background: rgba(255,255,255,0.08);
+    color: #aaa;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #map-search-clear:hover { background: rgba(255,255,255,0.14); }
+  #map-search-clear.visible { display: inline-block; }
+  #map-search-status { font-size: 12px; color: #e57373; }
+
   </style>
 </head>
 <body>
@@ -370,7 +425,13 @@
       <p>Loading map…</p>
     </div>
     <div class="geocode-progress" id="geocodeProgress"></div>
-    <div id="map"></div>
+    <div id="map-search-bar">
+    <input id="map-search-input" type="text" placeholder="🔍 Search address to zoom in…" autocomplete="off" />
+    <button id="map-search-btn">Search</button>
+    <button id="map-search-clear">✕ Clear</button>
+    <span id="map-search-status"></span>
+  </div>
+  <div id="map"></div>
   </div>
 
 </div><!-- /app -->
@@ -778,6 +839,81 @@ function createMapUI() {
           { featureType: 'administrative.land_parcel', stylers: [{ visibility: 'off' }] }
         ]
       });
+
+
+      // ── Address Search Feature ───────────────────────────────────────────
+      (function() {
+        const searchBar   = document.getElementById('map-search-bar');
+        const input       = document.getElementById('map-search-input');
+        const btn         = document.getElementById('map-search-btn');
+        const clearBtn    = document.getElementById('map-search-clear');
+        const statusEl    = document.getElementById('map-search-status');
+        let searchMarker  = null;
+
+        const origShowTab = window.showTab;
+        window.showTab = function(tab) {
+          origShowTab(tab);
+          if (tab === 'map') searchBar.classList.add('visible');
+          else searchBar.classList.remove('visible');
+        };
+
+        async function doSearch() {
+          const query = input.value.trim();
+          if (!query) return;
+          statusEl.textContent = '';
+          btn.disabled = true;
+          btn.textContent = 'Searching…';
+          try {
+            const url = 'https://nominatim.openstreetmap.org/search?' +
+              new URLSearchParams({ q: query, format: 'json', limit: 1, countrycodes: 'us' });
+            const res = await fetch(url, { headers: { 'Accept-Language': 'en' } });
+            const data = await res.json();
+            if (!data.length) throw new Error('Address not found');
+            const lat = parseFloat(data[0].lat);
+            const lng = parseFloat(data[0].lon);
+            if (searchMarker) searchMarker.setMap(null);
+            searchMarker = new google.maps.Marker({
+              position: { lat, lng },
+              map: gmap,
+              title: query,
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 10,
+                fillColor: '#4a8ef8',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2.5,
+              },
+              zIndex: 999,
+            });
+            const infoWin = new google.maps.InfoWindow({ content: '<strong style="color:#111">📍 ' + query + '</strong>' });
+            infoWin.open(gmap, searchMarker);
+            searchMarker.addListener('click', () => infoWin.open(gmap, searchMarker));
+            gmap.setCenter({ lat, lng });
+            gmap.setZoom(15);
+            clearBtn.classList.add('visible');
+          } catch(e) {
+            statusEl.textContent = e.message === 'Address not found'
+              ? '⚠ Address not found'
+              : '⚠ Search failed';
+          } finally {
+            btn.disabled = false;
+            btn.textContent = 'Search';
+          }
+        }
+
+        function doClear() {
+          if (searchMarker) { searchMarker.setMap(null); searchMarker = null; }
+          input.value = '';
+          statusEl.textContent = '';
+          clearBtn.classList.remove('visible');
+        }
+
+        btn.addEventListener('click', doSearch);
+        clearBtn.addEventListener('click', doClear);
+        input.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
+      })();
+      // ── End Address Search ───────────────────────────────────────────
       state.map = gmap;
       state.mapInitialized = true;
       state.mapInfoWindow = new google.maps.InfoWindow();
