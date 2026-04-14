@@ -239,7 +239,7 @@
   
   /* ── Address Search Bar ── */
   #map-search-bar {
-    display: none;
+    display: flex;
     align-items: center;
     gap: 8px;
     padding: 8px 12px;
@@ -850,12 +850,7 @@ function createMapUI() {
         const statusEl    = document.getElementById('map-search-status');
         let searchMarker  = null;
 
-        const origShowTab = window.showTab;
-        window.showTab = function(tab) {
-          origShowTab(tab);
-          if (tab === 'map') searchBar.classList.add('visible');
-          else searchBar.classList.remove('visible');
-        };
+
 
         async function doSearch() {
           const query = input.value.trim();
